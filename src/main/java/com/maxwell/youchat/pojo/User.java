@@ -1,14 +1,10 @@
 package com.maxwell.youchat.pojo;
 
+
 import lombok.*;
 
-import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.Id;
-import javax.persistence.Table;
-
-@Entity
-@Table(name = "t_user")
+//@Entity
+//@Table(name = "t_user")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -16,8 +12,8 @@ import javax.persistence.Table;
 @Setter
 public class User {
 
-    @Id
-    @GeneratedValue
+//    @Id
+//    @GeneratedValue
     private Long id;
 
     private String username;

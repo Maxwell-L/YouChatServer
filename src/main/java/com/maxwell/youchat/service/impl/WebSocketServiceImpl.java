@@ -3,32 +3,41 @@ package com.maxwell.youchat.service.impl;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.maxwell.youchat.pojo.ChatMessage;
+import com.maxwell.youchat.pojo.User;
 import org.springframework.stereotype.Service;
+import org.springframework.web.bind.annotation.GetMapping;
 
 import javax.websocket.*;
+import javax.websocket.server.PathParam;
 import javax.websocket.server.ServerEndpoint;
 import java.io.IOException;
 import java.util.Date;
-import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
-@ServerEndpoint("/message")
+@ServerEndpoint(value = "/message/{userId}")
 public class WebSocketServiceImpl {
 
-    private static CopyOnWriteArraySet<WebSocketServiceImpl> webSocketSet = new CopyOnWriteArraySet<>();
+    private static ConcurrentHashMap<Long, WebSocketServiceImpl> webSocketMap = new ConcurrentHashMap<>();
     private Session session;
 
-    @OnOpen
-    public void onOpen(Session session) {
-        this.session = session;
-        webSocketSet.add(this);
-        System.out.println("INFO::连接成功::" + this.toString());
+    private Long id;
+    private Long friendId;
 
+    @OnOpen
+    public void onOpen(Session session, @PathParam("userId") Long userId) {
+        this.session = session;
+        this.id = userId;
+        webSocketMap.put(id, this);
+        this.friendId = 1L ^ userId;
+        System.out.println("INFO::连接成功::" + webSocketMap.size());
     }
 
     @OnClose
     public void onClose() {
-        webSocketSet.remove(this);
+        System.out.println("INFO::连接断开");
+//        webSocketMap.remove(id);
     }
 
     @OnMessage
@@ -36,9 +45,12 @@ public class WebSocketServiceImpl {
         // 将收到的消息发送回客户端
         ChatMessage receiveMessage = JSONObject.parseObject(message, ChatMessage.class);
         String content = receiveMessage.getContent();
-        ChatMessage sendMessage = new ChatMessage(null, 1L, 0L, null, new Date().getTime(), content);
+        ChatMessage sendMessage = new ChatMessage(null, id, friendId, null, new Date().getTime(), content);
         try {
-            sendMessage(sendMessage.toString());
+            while (webSocketMap.get(friendId) == null) {
+
+            }
+            sendMessage(webSocketMap.get(friendId), sendMessage.toString());
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -49,7 +61,8 @@ public class WebSocketServiceImpl {
         error.printStackTrace();
     }
 
-    private void sendMessage(String message) throws IOException {
-        this.session.getBasicRemote().sendText(message);
+    private void sendMessage(WebSocketServiceImpl service, String message) throws IOException {
+        service.session.getBasicRemote().sendText(message);
     }
+
 }
