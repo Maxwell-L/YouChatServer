@@ -11,8 +11,7 @@ import javax.websocket.*;
 import javax.websocket.server.PathParam;
 import javax.websocket.server.ServerEndpoint;
 import java.io.IOException;
-import java.util.Date;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
@@ -20,6 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class WebSocketServiceImpl {
 
     private static ConcurrentHashMap<Long, WebSocketServiceImpl> webSocketMap = new ConcurrentHashMap<>();
+    private static ConcurrentHashMap<Long, Queue<ChatMessage>> chatMessageMap = new ConcurrentHashMap<>();
     private Session session;
 
     private Long id;
@@ -31,29 +31,46 @@ public class WebSocketServiceImpl {
         this.id = userId;
         webSocketMap.put(id, this);
         this.friendId = 1L ^ userId;
+        chatMessageMap.put(friendId, new LinkedList<>());
         System.out.println("INFO::连接成功::" + webSocketMap.size());
     }
 
     @OnClose
     public void onClose() {
         System.out.println("INFO::连接断开");
-//        webSocketMap.remove(id);
+        webSocketMap.remove(id);
     }
 
     @OnMessage
-    public void onMessage(String message, Session session) {
+    public void onMessage(String message, Session session) throws IOException {
+        // 判断消息是否是心跳检测
+        if (message.charAt(0) != '{') {
+            Long id = Long.parseLong(message);
+            boolean isOnline = webSocketMap.get(id) != null;
+            sendMessage(this, String.valueOf(isOnline));
+            return;
+        }
         // 将收到的消息发送回客户端
         ChatMessage receiveMessage = JSONObject.parseObject(message, ChatMessage.class);
         String content = receiveMessage.getContent();
-        ChatMessage sendMessage = new ChatMessage(null, id, friendId, null, new Date().getTime(), content);
+        ChatMessage newMessage = new ChatMessage(null, id, friendId, null, new Date().getTime(), content);
         try {
-            while (webSocketMap.get(friendId) == null) {
-
+            if (webSocketMap.get(friendId) == null) {
+                chatMessageMap.get(friendId).add(newMessage);
+            } else {
+                Queue<ChatMessage> messageList = chatMessageMap.get(friendId);
+                messageList.offer(newMessage);
+                while (!messageList.isEmpty()) {
+                    sendMessage(webSocketMap.get(friendId), messageList.poll().toString());
+                }
             }
-            sendMessage(webSocketMap.get(friendId), sendMessage.toString());
         } catch (IOException e) {
             e.printStackTrace();
         }
+
+        // test
+//        ChatMessage newMessage = new ChatMessage(null, friendId, id, null, new Date().getTime(), content);
+//        sendMessage(this, newMessage.toString());
     }
 
     @OnError
