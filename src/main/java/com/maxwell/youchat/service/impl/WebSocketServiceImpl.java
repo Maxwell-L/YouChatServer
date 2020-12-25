@@ -1,11 +1,8 @@
 package com.maxwell.youchat.service.impl;
 
-import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.maxwell.youchat.pojo.ChatMessage;
-import com.maxwell.youchat.pojo.User;
 import org.springframework.stereotype.Service;
-import org.springframework.web.bind.annotation.GetMapping;
 
 import javax.websocket.*;
 import javax.websocket.server.PathParam;
@@ -25,20 +22,44 @@ public class WebSocketServiceImpl {
     private Long id;
     private Long friendId;
 
+    private Thread tempChatMessageSenderThread;
+
     @OnOpen
     public void onOpen(Session session, @PathParam("userId") Long userId) {
         this.session = session;
         this.id = userId;
+        if (webSocketMap.get(id) != null) {
+            try {
+                webSocketMap.get(id).getSession().close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
         webSocketMap.put(id, this);
         this.friendId = 1L ^ userId;
         chatMessageMap.put(friendId, new LinkedList<>());
-        System.out.println("INFO::连接成功::" + webSocketMap.size());
+        System.out.println("INFO::" + "用户" + userId + " 连接成功, 在线人数:" + webSocketMap.size());
+        tempChatMessageSenderThread = new Thread(() -> {
+            while (!Thread.currentThread().isInterrupted()) {
+                if (webSocketMap.get(friendId) != null && !chatMessageMap.get(friendId).isEmpty()) {
+                    Queue<ChatMessage> chatMessageQueue = chatMessageMap.get(friendId);
+                    while (!chatMessageQueue.isEmpty()) {
+                        try {
+                            sendMessage(webSocketMap.get(friendId), chatMessageQueue.poll().toString());
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+            }
+        });
+        tempChatMessageSenderThread.start();
     }
 
     @OnClose
     public void onClose() {
-        System.out.println("INFO::连接断开");
         webSocketMap.remove(id);
+        System.out.println("INFO::" + "用户" + id + " 连接断开");
     }
 
     @OnMessage
@@ -58,19 +79,11 @@ public class WebSocketServiceImpl {
             if (webSocketMap.get(friendId) == null) {
                 chatMessageMap.get(friendId).add(newMessage);
             } else {
-                Queue<ChatMessage> messageList = chatMessageMap.get(friendId);
-                messageList.offer(newMessage);
-                while (!messageList.isEmpty()) {
-                    sendMessage(webSocketMap.get(friendId), messageList.poll().toString());
-                }
+                sendMessage(webSocketMap.get(friendId), newMessage.toString());
             }
         } catch (IOException e) {
             e.printStackTrace();
         }
-
-        // test
-//        ChatMessage newMessage = new ChatMessage(null, friendId, id, null, new Date().getTime(), content);
-//        sendMessage(this, newMessage.toString());
     }
 
     @OnError
@@ -82,4 +95,7 @@ public class WebSocketServiceImpl {
         service.session.getBasicRemote().sendText(message);
     }
 
+    public Session getSession() {
+        return this.session;
+    }
 }
